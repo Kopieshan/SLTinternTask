@@ -82,6 +82,12 @@ class _DocketScreenState extends State<DocketScreen> {
   double _uploadProgress = 0.0;
 
   final ImagePicker _picker = ImagePicker();
+  
+  // Use custom database name
+  final FirebaseFirestore _firestore = FirebaseFirestore.instanceFor(
+    app: Firebase.app(),
+    databaseId: 'sltinterntask',
+  );
 
   /// Format date as YYYY-MM-DD
   String _formatDateForFilename(DateTime date) {
@@ -170,7 +176,7 @@ class _DocketScreenState extends State<DocketScreen> {
       final timestamp = _formatDateForFilename(DateTime.now());
       
       // Query Firestore to find existing files with same date and category
-      final querySnapshot = await FirebaseFirestore.instance
+      final querySnapshot = await _firestore
           .collection('temp_dockets')
           .where('category', isEqualTo: category)
           .get();
@@ -232,7 +238,7 @@ class _DocketScreenState extends State<DocketScreen> {
 
       // 7. Write metadata to Firestore
       debugPrint('Writing to Firestore...');
-      await FirebaseFirestore.instance.collection('temp_dockets').add({
+      await _firestore.collection('temp_dockets').add({
         'filename': filename,
         'category': category,
         'storagePath': 'dockets/${category.toLowerCase()}/$filename',
