@@ -227,7 +227,7 @@ class _DocketScreenState extends State<DocketScreen> {
         debugPrint('Upload task completed');
       });
       
-      final snapshot = await uploadTask.snapshot;
+      final snapshot = uploadTask.snapshot;
 
       // 5. Get download URL
       final downloadURL = await snapshot.ref.getDownloadURL();
@@ -579,13 +579,3 @@ class _DocketScreenState extends State<DocketScreen> {
   }
 }
 
-/*
-ACCEPTANCE TEST CHECKLIST:
-- [ ] Select category defaults to none; Upload disabled until both category and photo are ready.
-- [ ] Taking a photo shows its preview.
-- [ ] Upload shows progress and ends with success message.
-- [ ] Firebase Storage contains file: dockets/temp/[YYYY-MM-DD]_[Category]_0.jpg
-- [ ] Firestore temp_dockets has a document with all required fields.
-- [ ] App handles canceling camera gracefully.
-- [ ] App shows friendly errors when offline or Firebase not set.
-*/
