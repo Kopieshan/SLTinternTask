@@ -1,4 +1,3 @@
-// FILE: lib/main.dart
 import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:firebase_core/firebase_core.dart';
@@ -13,7 +12,6 @@ import 'firebase_options.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
-  // Initialize Firebase
   try {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
@@ -67,7 +65,6 @@ class DocketScreen extends StatefulWidget {
 }
 
 class _DocketScreenState extends State<DocketScreen> {
-  // 5 predefined categories
   static const List<String> categories = [
     'Electrical',
     'Plumbing',
@@ -83,18 +80,15 @@ class _DocketScreenState extends State<DocketScreen> {
 
   final ImagePicker _picker = ImagePicker();
   
-  // Use custom database name
   final FirebaseFirestore _firestore = FirebaseFirestore.instanceFor(
     app: Firebase.app(),
     databaseId: 'sltinterntask',
   );
 
-  /// Format date as YYYY-MM-DD
   String _formatDateForFilename(DateTime date) {
     return '${date.year}-${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')}';
   }
 
-  /// Pick image from camera
   Future<void> _pickImageFromCamera() async {
     try {
       final XFile? photo = await _picker.pickImage(
@@ -103,7 +97,6 @@ class _DocketScreenState extends State<DocketScreen> {
       );
 
       if (photo == null) {
-        // User canceled
         return;
       }
 
@@ -115,7 +108,6 @@ class _DocketScreenState extends State<DocketScreen> {
     }
   }
 
-  /// Compress image to <= 300 KB if possible
   Future<File> _compressImage(File file) async {
     try {
       final dir = await getTemporaryDirectory();
@@ -140,7 +132,6 @@ class _DocketScreenState extends State<DocketScreen> {
       int fileSize = await compressed.length();
       debugPrint('Compressed size: ${fileSize / 1024} KB');
 
-      // If still > 300 KB, try lower quality
       if (fileSize > 300 * 1024) {
         compressedFile = await FlutterImageCompress.compressAndGetFile(
           file.absolute.path,
@@ -161,7 +152,6 @@ class _DocketScreenState extends State<DocketScreen> {
     }
   }
 
-  /// Upload image to Firebase Storage and write metadata to Firestore
   Future<void> _uploadToFirebase(File imageFile, String category) async {
     setState(() {
       _isUploading = true;
@@ -169,27 +159,20 @@ class _DocketScreenState extends State<DocketScreen> {
     });
 
     try {
-      // 1. Compress image
       final compressedFile = await _compressImage(imageFile);
-
-      // 2. Generate filename with auto-incrementing counter
       final timestamp = _formatDateForFilename(DateTime.now());
       
-      // Query Firestore to find existing files with same date and category
       final querySnapshot = await _firestore
           .collection('temp_dockets')
           .where('category', isEqualTo: category)
           .get();
 
-      // Find the highest counter number for today's date
       int maxCounter = -1;
       for (var doc in querySnapshot.docs) {
         final data = doc.data();
         if (data['filename'] != null) {
           final filename = data['filename'] as String;
-          // Check if filename starts with today's date
           if (filename.startsWith('${timestamp}_${category}_')) {
-            // Extract counter from filename: YYYY-MM-DD_Category_X.jpg
             final match = RegExp(r'_(\d+)\.jpg$').firstMatch(filename);
             if (match != null) {
               final counter = int.parse(match.group(1)!);
@@ -201,19 +184,14 @@ class _DocketScreenState extends State<DocketScreen> {
         }
       }
 
-      // Increment counter
       final newCounter = maxCounter + 1;
       final filename = '${timestamp}_${category}_$newCounter.jpg';
 
       debugPrint('Uploading file: $filename');
 
-      // 3. Storage path: dockets/[category]/[filename] - each category in its own folder
       final storageRef = FirebaseStorage.instance.ref().child('dockets/${category.toLowerCase()}/$filename');
-
-      // 4. Upload with progress tracking
       final uploadTask = storageRef.putFile(compressedFile);
 
-      // Listen to upload progress
       uploadTask.snapshotEvents.listen((TaskSnapshot snapshot) {
         if (mounted) {
           setState(() {
@@ -222,21 +200,16 @@ class _DocketScreenState extends State<DocketScreen> {
         }
       });
 
-      // Wait for upload to complete
       await uploadTask.whenComplete(() {
         debugPrint('Upload task completed');
       });
       
       final snapshot = uploadTask.snapshot;
-
-      // 5. Get download URL
       final downloadURL = await snapshot.ref.getDownloadURL();
       debugPrint('Upload successful. Download URL: $downloadURL');
 
-      // 6. Detect platform
       final platform = Platform.isAndroid ? 'android' : (Platform.isIOS ? 'ios' : 'macos');
 
-      // 7. Write metadata to Firestore
       debugPrint('Writing to Firestore...');
       await _firestore.collection('temp_dockets').add({
         'filename': filename,
@@ -248,10 +221,8 @@ class _DocketScreenState extends State<DocketScreen> {
       });
       debugPrint('Firestore write successful');
 
-      // 8. Success: clear image and show message
       debugPrint('Resetting UI state...');
       
-      // Force state reset
       setState(() {
         _imageFile = null;
         _isUploading = false;
@@ -298,7 +269,6 @@ class _DocketScreenState extends State<DocketScreen> {
       debugPrint('Upload error: $e');
       debugPrint('Stack trace: ${StackTrace.current}');
       
-      // Ensure state reset on error
       setState(() {
         _isUploading = false;
         _uploadProgress = 0.0;
@@ -308,7 +278,6 @@ class _DocketScreenState extends State<DocketScreen> {
         _showError('Upload failed: $e');
       }
     } finally {
-      // Absolutely ensure state is reset
       if (mounted && _isUploading) {
         debugPrint('Finally block: Force resetting _isUploading');
         setState(() {
