@@ -13,7 +13,7 @@ import 'firebase_options.dart';
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
   
-  // TODO: Run `flutterfire configure` in terminal to generate firebase_options.dart
+  // Initialize Firebase
   try {
     await Firebase.initializeApp(
       options: DefaultFirebaseOptions.currentPlatform,
@@ -166,46 +166,93 @@ class _DocketScreenState extends State<DocketScreen> {
       // 1. Compress image
       final compressedFile = await _compressImage(imageFile);
 
-      // 2. Generate filename: [YYYY-MM-DD]_[Category]_0.jpg
+      // 2. Generate filename with auto-incrementing counter
       final timestamp = _formatDateForFilename(DateTime.now());
-      final filename = '${timestamp}_${category}_0.jpg';
+      
+      // Query Firestore to find existing files with same date and category
+      final querySnapshot = await FirebaseFirestore.instance
+          .collection('temp_dockets')
+          .where('category', isEqualTo: category)
+          .get();
 
-      // 3. Storage path: dockets/temp/[filename]
-      final storageRef = FirebaseStorage.instance.ref().child('dockets/temp/$filename');
+      // Find the highest counter number for today's date
+      int maxCounter = -1;
+      for (var doc in querySnapshot.docs) {
+        final data = doc.data();
+        if (data['filename'] != null) {
+          final filename = data['filename'] as String;
+          // Check if filename starts with today's date
+          if (filename.startsWith('${timestamp}_${category}_')) {
+            // Extract counter from filename: YYYY-MM-DD_Category_X.jpg
+            final match = RegExp(r'_(\d+)\.jpg$').firstMatch(filename);
+            if (match != null) {
+              final counter = int.parse(match.group(1)!);
+              if (counter > maxCounter) {
+                maxCounter = counter;
+              }
+            }
+          }
+        }
+      }
+
+      // Increment counter
+      final newCounter = maxCounter + 1;
+      final filename = '${timestamp}_${category}_$newCounter.jpg';
+
+      debugPrint('Uploading file: $filename');
+
+      // 3. Storage path: dockets/[category]/[filename] - each category in its own folder
+      final storageRef = FirebaseStorage.instance.ref().child('dockets/${category.toLowerCase()}/$filename');
 
       // 4. Upload with progress tracking
       final uploadTask = storageRef.putFile(compressedFile);
 
+      // Listen to upload progress
       uploadTask.snapshotEvents.listen((TaskSnapshot snapshot) {
-        setState(() {
-          _uploadProgress = snapshot.bytesTransferred / snapshot.totalBytes;
-        });
+        if (mounted) {
+          setState(() {
+            _uploadProgress = snapshot.bytesTransferred / snapshot.totalBytes;
+          });
+        }
       });
 
-      final snapshot = await uploadTask;
+      // Wait for upload to complete
+      await uploadTask.whenComplete(() {
+        debugPrint('Upload task completed');
+      });
+      
+      final snapshot = await uploadTask.snapshot;
 
       // 5. Get download URL
       final downloadURL = await snapshot.ref.getDownloadURL();
+      debugPrint('Upload successful. Download URL: $downloadURL');
 
       // 6. Detect platform
-      final platform = Platform.isAndroid ? 'android' : 'ios';
+      final platform = Platform.isAndroid ? 'android' : (Platform.isIOS ? 'ios' : 'macos');
 
       // 7. Write metadata to Firestore
+      debugPrint('Writing to Firestore...');
       await FirebaseFirestore.instance.collection('temp_dockets').add({
         'filename': filename,
         'category': category,
-        'storagePath': 'dockets/temp/$filename',
+        'storagePath': 'dockets/${category.toLowerCase()}/$filename',
         'downloadURL': downloadURL,
         'createdAt': FieldValue.serverTimestamp(),
         'devicePlatform': platform,
       });
+      debugPrint('Firestore write successful');
 
       // 8. Success: clear image and show message
+      debugPrint('Resetting UI state...');
+      
+      // Force state reset
       setState(() {
         _imageFile = null;
         _isUploading = false;
         _uploadProgress = 0.0;
       });
+      
+      debugPrint('State reset complete. _isUploading: $_isUploading');
 
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -242,11 +289,27 @@ class _DocketScreenState extends State<DocketScreen> {
         );
       }
     } catch (e) {
+      debugPrint('Upload error: $e');
+      debugPrint('Stack trace: ${StackTrace.current}');
+      
+      // Ensure state reset on error
       setState(() {
         _isUploading = false;
         _uploadProgress = 0.0;
       });
-      _showError('Upload failed: $e');
+      
+      if (mounted) {
+        _showError('Upload failed: $e');
+      }
+    } finally {
+      // Absolutely ensure state is reset
+      if (mounted && _isUploading) {
+        debugPrint('Finally block: Force resetting _isUploading');
+        setState(() {
+          _isUploading = false;
+          _uploadProgress = 0.0;
+        });
+      }
     }
   }
 
