@@ -72,3 +72,8 @@ macos/Runner/GoogleService-Info.plist
 /web/*.js_
 /web/*.js.deps
 /web/*.js.map
+
+# Documentation/Guide Files
+*.md
+!README.md
+*.txt
